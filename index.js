@@ -1,4 +1,10 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { 
+  Client, 
+  GatewayIntentBits, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle 
+} = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -11,47 +17,93 @@ const client = new Client({
 const prefix = ".";
 const afkUsers = new Map();
 
+// ---------------- MESSAGE ----------------
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // Remove AFK when user talks
+  // REMOVE AFK ON CHAT
   if (afkUsers.has(message.author.id)) {
     afkUsers.delete(message.author.id);
 
-    const backEmbed = new EmbedBuilder()
-      .setColor('#808080')
-      .setDescription(`✅ Welcome back ${message.author}, your AFK has been removed.`);
-
-    message.channel.send({ embeds: [backEmbed] });
+    await message.channel.send({
+      content:
+`🧱 **CONTAINER**
+────────────────────
+🟢 STATUS: BACK ONLINE
+👤 USER: ${message.author}
+────────────────────
+✅ Your AFK has been removed`
+    });
   }
 
-  // Check AFK mentions
+  // AFK MENTION CHECK
   for (const user of message.mentions.users.values()) {
     if (afkUsers.has(user.id)) {
       const reason = afkUsers.get(user.id);
 
-      const afkPingEmbed = new EmbedBuilder()
-        .setColor('#808080')
-        .setTitle('User is AFK')
-        .setDescription(`💤 ${user.tag} is currently AFK\n📌 Reason: **${reason}**`);
-
-      message.channel.send({ embeds: [afkPingEmbed] });
+      await message.channel.send({
+        content:
+`🧱 **CONTAINER**
+────────────────────
+💤 STATUS: AFK DETECTED
+👤 USER: ${user.tag}
+📌 REASON: ${reason}
+────────────────────`
+      });
     }
   }
 
-  // AFK command
+  // AFK COMMAND
   if (message.content.startsWith(prefix + "afk")) {
-    const args = message.content.split(" ").slice(1);
-    const reason = args.join(" ") || "No reason provided";
+    const reason = message.content.split(" ").slice(1).join(" ") || "No reason provided";
 
     afkUsers.set(message.author.id, reason);
 
-    const afkEmbed = new EmbedBuilder()
-      .setColor('#808080')
-      .setTitle('AFK Set')
-      .setDescription(`💤 You are now AFK\n📌 Reason: **${reason}**`);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("remove_afk")
+        .setLabel("Return from AFK")
+        .setStyle(ButtonStyle.Success)
+    );
 
-    message.channel.send({ embeds: [afkEmbed] });
+    await message.channel.send({
+      content:
+`🧱 **CONTAINER**
+────────────────────
+💤 STATUS: AFK MODE ENABLED
+👤 USER: ${message.author}
+📌 REASON: ${reason}
+────────────────────
+👇 Press button to return`,
+      components: [row]
+    });
+  }
+});
+
+// ---------------- BUTTON ----------------
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "remove_afk") {
+    if (!afkUsers.has(interaction.user.id)) {
+      return interaction.reply({
+        content: "❌ You are not AFK.",
+        ephemeral: true
+      });
+    }
+
+    afkUsers.delete(interaction.user.id);
+
+    return interaction.reply({
+      content:
+`🧱 **CONTAINER**
+────────────────────
+🟢 STATUS: BACK ONLINE
+👤 USER: ${interaction.user}
+────────────────────
+✅ Welcome back!`,
+      ephemeral: false
+    });
   }
 });
 
