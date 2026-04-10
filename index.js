@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -8,12 +9,12 @@ const client = new Client({
 });
 
 const prefix = ".";
-const afkUsers = new Map(); // store AFK users
+const afkUsers = new Map();
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  if (message.author.bot || !message.guild) return;
 
-  // Check if user is AFK and remove it when they talk
+  // Remove AFK when user talks
   if (afkUsers.has(message.author.id)) {
     afkUsers.delete(message.author.id);
 
@@ -24,8 +25,8 @@ client.on('messageCreate', async (message) => {
     message.channel.send({ embeds: [backEmbed] });
   }
 
-  // Mention check (if someone pings AFK user)
-  message.mentions.users.forEach(user => {
+  // Check AFK mentions
+  for (const user of message.mentions.users.values()) {
     if (afkUsers.has(user.id)) {
       const reason = afkUsers.get(user.id);
 
@@ -36,9 +37,9 @@ client.on('messageCreate', async (message) => {
 
       message.channel.send({ embeds: [afkPingEmbed] });
     }
-  });
+  }
 
-  // AFK Command
+  // AFK command
   if (message.content.startsWith(prefix + "afk")) {
     const args = message.content.split(" ").slice(1);
     const reason = args.join(" ") || "No reason provided";
@@ -54,4 +55,4 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-;
+client.login(process.env.TOKEN);
