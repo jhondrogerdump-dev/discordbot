@@ -286,4 +286,4 @@ client.on('messageCreate', async message => {
     }
 });
 
-client.login('process.env.TOKEN');   // ← Change to process.env.TOKEN for Railway
+client.login(process.env.TOKEN); // ← Change to process.env.TOKEN for Railway
