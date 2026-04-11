@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -13,13 +14,13 @@ const afkUsers = new Map();
 const whitelistedUsers = new Set();
 
 // Role IDs
-const WHITELIST_ROLES = ['1491420604241281074', '1491422119567953920'];
+const SAY_AND_WHITELIST_ROLE = '1491422119567953920';
 const MOD_ROLES = ['1491424472404590704', '1491424599576018954'];
 
 const URL_REGEX = /https?:\/\/\S+|discord(?:app\.com\/invite|\.gg)\/\S+/gi;
 
-function hasWhitelistRole(member) {
-    return WHITELIST_ROLES.some(id => member.roles.cache.has(id));
+function hasSayWhitelistRole(member) {
+    return member.roles.cache.has(SAY_AND_WHITELIST_ROLE);
 }
 
 function hasModRole(member) {
@@ -42,7 +43,7 @@ client.on('messageCreate', async message => {
     const member = message.member;
     if (!member) return;
 
-    // AFK
+    // AFK (everyone)
     if (command === 'afk') {
         const reason = args.join(' ') || 'No reason given';
         afkUsers.set(message.author.id, { reason, time: Date.now() });
@@ -57,12 +58,16 @@ client.on('messageCreate', async message => {
 
         try {
             await message.member.setNickname(`[AFK] ${message.member.displayName}`.slice(0, 32));
-        } catch (e) {}
+        } catch {}
         return;
     }
 
-    // Say
+    // Say - only specific role
     if (command === 'say') {
+        if (!hasSayWhitelistRole(member)) {
+            return message.reply("❌ You don't have permission to use this command.").then(m => setTimeout(() => m.delete().catch(() => {}), 8000));
+        }
+
         const channel = message.mentions.channels.first();
         const text = args.slice(1).join(' ');
 
@@ -79,7 +84,7 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // Anti-Link check (runs even if not a command)
+    // Anti-Link (always active)
     if (URL_REGEX.test(message.content) && !whitelistedUsers.has(message.author.id)) {
         try { await message.delete(); } catch {}
         return message.channel.send(`${message.author} You're not whitelisted to send links.`)
@@ -111,8 +116,8 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // === WHITELIST COMMANDS (specific roles only) ===
-    if (command === 'whitelist' && hasWhitelistRole(member)) {
+    // Whitelist / Unwhitelist - only the say/whitelist role
+    if (command === 'whitelist' && hasSayWhitelistRole(member)) {
         const target = message.mentions.members.first();
         const reason = args.slice(1).join(' ') || 'No reason provided';
         if (!target) return message.reply('Mention a user');
@@ -129,7 +134,7 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    if (command === 'unwhitelist' && hasWhitelistRole(member)) {
+    if (command === 'unwhitelist' && hasSayWhitelistRole(member)) {
         const target = message.mentions.members.first();
         const reason = args.slice(1).join(' ') || 'No reason provided';
         if (!target) return message.reply('Mention a user');
@@ -145,7 +150,7 @@ client.on('messageCreate', async message => {
         return;
     }
 
-    // === MOD COMMANDS (mod roles only) ===
+    // === MOD COMMANDS (only mod roles) ===
     if (!hasModRole(member)) return;
 
     if (command === 'warn') {
@@ -193,10 +198,7 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setTitle(`${target} has been timed out by ${message.author.tag}`)
             .setColor(0x00ff00)
-            .addFields(
-                { name: 'Duration', value: durationStr },
-                { name: 'Reason', value: reason }
-            );
+            .addFields({ name: 'Duration', value: durationStr }, { name: 'Reason', value: reason });
 
         await message.channel.send({ embeds: [embed] });
     }
@@ -262,7 +264,6 @@ client.on('messageCreate', async message => {
         await message.channel.send({ embeds: [embed] });
     }
 
-    // role / unrole (still under mod roles)
     if (command === 'role' || command === 'unrole') {
         const target = message.mentions.members.first();
         const roleInput = args[1];
@@ -285,4 +286,4 @@ client.on('messageCreate', async message => {
     }
 });
 
-client.login(process.env.TOKEN);
+client.login('process.env.TOKEN');   // ← Change to process.env.TOKEN for Railway
