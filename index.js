@@ -18,12 +18,11 @@ const client = new Client({
 
 const PREFIX = ".";
 
-// ENV
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// 🔧 Register Slash Commands
+// 🔧 Slash Commands
 const commands = [
   new SlashCommandBuilder()
     .setName('avatar')
@@ -36,7 +35,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('say')
-    .setDescription('Send a message to a channel (Admin only)')
+    .setDescription('Send a message (Admin only)')
     .addStringOption(option =>
       option.setName('text')
         .setDescription('Message to send')
@@ -53,7 +52,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
   try {
-    console.log("Registering slash commands...");
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
@@ -64,7 +62,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
   }
 })();
 
-// ✅ Ready
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
@@ -99,7 +96,7 @@ client.on('messageCreate', async (message) => {
     });
   }
 
-  // 🔹 SAY (ADMIN ONLY)
+  // 🔹 SAY (ADMIN ONLY + DELETE COMMAND)
   if (cmd === "say") {
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return message.reply("❌ You don't have permission to use this command.");
@@ -111,7 +108,10 @@ client.on('messageCreate', async (message) => {
     const text = args.slice(1).join(" ");
     if (!text) return message.reply("❌ Please provide a message.");
 
-    channel.send(text);
+    await channel.send(text);
+
+    // 🧹 Delete the command message
+    message.delete().catch(() => {});
   }
 });
 
@@ -141,7 +141,7 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // 🔹 SAY (ADMIN ONLY)
+  // 🔹 SAY (ADMIN ONLY + AUTO DELETE RESPONSE)
   if (interaction.commandName === "say") {
     if (!interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({
@@ -155,12 +155,16 @@ client.on('interactionCreate', async (interaction) => {
 
     await channel.send(text);
 
-    return interaction.reply({
+    const reply = await interaction.reply({
       content: "✅ Message sent!",
-      ephemeral: true
+      fetchReply: true
     });
+
+    // 🧹 Auto delete bot reply after 3 seconds
+    setTimeout(() => {
+      reply.delete().catch(() => {});
+    }, 3000);
   }
 });
 
-// 🔐 Login
 client.login(process.env.TOKEN);
