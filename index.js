@@ -20,12 +20,11 @@ const client = new Client({
 
 const PREFIX = ".";
 
-// ================= READY =================
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ================= MESSAGE COMMANDS =================
+// ===================== MESSAGE COMMANDS =====================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.content.startsWith(PREFIX)) return;
@@ -33,7 +32,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // ================= .AVATAR =================
+  // ===================== .AVATAR FIXED =====================
   if (cmd === "avatar") {
     const user = message.mentions.users.first() || message.author;
 
@@ -43,50 +42,51 @@ client.on('messageCreate', async (message) => {
       forceStatic: false
     });
 
-    const components = [
-      new ContainerBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder()
-            .setContent(`**Here's ${user.username}'s avatar**`)
-        )
-        .addSeparatorComponents(
-          new SeparatorBuilder()
-            .setSpacing(SeparatorSpacingSize.Large)
-            .setDivider(true)
-        )
-        .addMediaGalleryComponents(
-          new MediaGalleryBuilder().addItems({
-            media: { url: avatarURL }
-          })
-        )
-    ];
+    const container = new ContainerBuilder()
+      .addTextDisplayComponents(
+        new TextDisplayBuilder()
+          .setContent(`**Here's ${user.username}'s avatar**`)
+      )
+      .addSeparatorComponents(
+        new SeparatorBuilder()
+          .setSpacing(SeparatorSpacingSize.Large)
+          .setDivider(true)
+      )
+      .addMediaGalleryComponents(
+        new MediaGalleryBuilder().addItems({
+          media: { url: avatarURL }
+        })
+      );
 
-    return message.reply({ components });
+    // 🔥 IMPORTANT FIX: components must be inside array properly
+    return message.reply({
+      components: [container]
+    });
   }
 
-  // ================= .SAY =================
+  // ===================== .SAY FIXED =====================
   if (cmd === "say") {
-    // admin only
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.reply("❌ You don't have permission to use this command.");
+      return message.reply("❌ No permission to use say.");
     }
 
     const channel = message.mentions.channels.first();
-    if (!channel) return message.reply("❌ Mention a channel.");
+    if (!channel) return message.reply("❌ Use: .say #channel message");
 
-    // extract message text properly
+    // better parsing fix
     const text = message.content
-      .slice(PREFIX.length + cmd.length)
-      .trim()
-      .replace(channel.toString(), "")
-      .trim();
+      .split(" ")
+      .slice(2) // removes .say + #channel
+      .join(" ");
 
     if (!text) return message.reply("❌ Provide a message.");
 
     await channel.send(text);
 
-    // 🧹 delete command message
-    await message.delete().catch(() => {});
+    // 🔥 FAST DELETE (fixed)
+    setTimeout(() => {
+      message.delete().catch(() => {});
+    }, 100);
   }
 });
 
