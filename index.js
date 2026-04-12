@@ -1,106 +1,185 @@
-const { Client, GatewayIntentBits, REST, Routes, PermissionFlagsBits } = require('discord.js');
-
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  PermissionsBitField,
+  SlashCommandBuilder,
+  REST,
+  Routes
+} = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// store last panel message
-const panelMessages = new Map();
+const PREFIX = ".";
 
-client.once('ready', async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+// ENV
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
-  const commands = [
-    {
-      name: "panel",
-      description: "Send or update container panel",
-      default_member_permissions: PermissionFlagsBits.Administrator.toString()
-    }
-  ];
+// =======================
+// SLASH COMMAND REGISTER
+// =======================
+const commands = [
+  new SlashCommandBuilder()
+    .setName('avatar')
+    .setDescription("Get a user's avatar")
+    .addUserOption(option =>
+      option.setName('user')
+        .setDescription('Select a user')
+        .setRequired(false)
+    ),
 
-  const rest = new REST({ version: '10' }).setToken(TOKEN);
+  new SlashCommandBuilder()
+    .setName('say')
+    .setDescription('Send a message (Admin only)')
+    .addStringOption(option =>
+      option.setName('text')
+        .setDescription('Message to send')
+        .setRequired(true)
+    )
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Target channel')
+        .setRequired(true)
+    )
+].map(cmd => cmd.toJSON());
 
-  await rest.put(
-    Routes.applicationCommands(CLIENT_ID),
-    { body: commands }
-  );
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-  console.log("✅ Command loaded");
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log("Slash commands registered!");
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
+// =======================
+// READY
+// =======================
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
 });
 
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+// =======================
+// PREFIX COMMANDS
+// =======================
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (!message.content.startsWith(PREFIX)) return;
 
-  if (interaction.commandName === "panel") {
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-    // 🔒 Admin only
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({
-        content: "❌ No permission to use this.",
-        ephemeral: true
-      });
+  // 🔹 AVATAR
+  if (cmd === "avatar") {
+    let user = message.mentions.users.first() || message.author;
+
+    const avatarURL = user.displayAvatarURL({
+      size: 1024,
+      extension: 'png',
+      forceStatic: false
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x000000)
+      .setImage(avatarURL);
+
+    return message.reply({
+      content: `Here's ${user}'s avatar`,
+      embeds: [embed]
+    });
+  }
+
+  // 🔹 SAY (ADMIN ONLY + AUTO DELETE COMMAND)
+  if (cmd === "say") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply("❌ You don't have permission to use this command.");
     }
 
-    // 📦 PURE CONTAINER UI
-    const panel = {
-      components: [
-        {
-          type: 17, // container
-          components: [
-            {
-              type: 10,
-              content: "# 📦 Kryzen System Panel"
-            },
-            {
-              type: 14 // separator
-            },
-            {
-              type: 10,
-              content:
-                "✅ Status: Online\n" +
-                "🚀 Host: Railway\n" +
-                "⚙️ Type: Components v2 Container\n\n" +
-                "Use this panel for logs, info, or systems."
-            }
-          ]
-        }
-      ]
-    };
+    const channel = message.mentions.channels.first();
+    if (!channel) return message.reply("❌ Please mention a channel.");
 
-    try {
-      const oldId = panelMessages.get(interaction.guildId);
+    // ✅ FIXED parsing
+    const text = message.content
+      .slice(PREFIX.length + cmd.length)
+      .trim()
+      .replace(channel.toString(), "")
+      .trim();
 
-      if (oldId) {
-        const msg = await interaction.channel.messages.fetch(oldId).catch(() => null);
+    if (!text) return message.reply("❌ Please provide a message.");
 
-        if (msg) {
-          await msg.edit(panel);
-          return interaction.reply({
-            content: "✅ Panel updated.",
-            ephemeral: true
-          });
-        }
-      }
+    await channel.send(text);
 
-      const sent = await interaction.channel.send(panel);
-      panelMessages.set(interaction.guildId, sent.id);
-
-      await interaction.reply({
-        content: "✅ Panel sent.",
-        ephemeral: true
-      });
-
-    } catch (err) {
-      console.error(err);
-      interaction.reply({
-        content: "❌ Failed to send panel.",
-        ephemeral: true
-      });
-    }
+    // 🧹 DELETE COMMAND MESSAGE
+    await message.delete().catch(() => {});
   }
 });
 
+// =======================
+// SLASH COMMANDS
+// =======================
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  // 🔹 AVATAR
+  if (interaction.commandName === "avatar") {
+    const user = interaction.options.getUser('user') || interaction.user;
+
+    const avatarURL = user.displayAvatarURL({
+      size: 1024,
+      extension: 'png',
+      forceStatic: false
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x000000)
+      .setImage(avatarURL);
+
+    return interaction.reply({
+      content: `Here's ${user}'s avatar`,
+      embeds: [embed]
+    });
+  }
+
+  // 🔹 SAY (ADMIN ONLY + AUTO DELETE REPLY)
+  if (interaction.commandName === "say") {
+    if (!interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator)) {
+      return interaction.reply({
+        content: "❌ You don't have permission to use this command.",
+        ephemeral: true
+      });
+    }
+
+    const text = interaction.options.getString('text');
+    const channel = interaction.options.getChannel('channel');
+
+    await channel.send(text);
+
+    const reply = await interaction.reply({
+      content: "✅ Message sent!",
+      fetchReply: true
+    });
+
+    // 🧹 DELETE BOT REPLY AFTER 3s
+    setTimeout(() => {
+      reply.delete().catch(() => {});
+    }, 3000);
+  }
+});
+
+// =======================
+// LOGIN
+// =======================
 client.login(process.env.TOKEN);
