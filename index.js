@@ -25,7 +25,7 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// ================= PREFIX =================
+// ================= MESSAGE COMMANDS =================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (!message.content.startsWith(PREFIX)) return;
@@ -33,7 +33,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
 
-  // 🔹 AVATAR (CONTAINER V2)
+  // ================= .AVATAR =================
   if (cmd === "avatar") {
     const user = message.mentions.users.first() || message.author;
 
@@ -47,7 +47,7 @@ client.on('messageCreate', async (message) => {
       new ContainerBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder()
-            .setContent(`**Here's ${user}'s avatar**`)
+            .setContent(`**Here's ${user.username}'s avatar**`)
         )
         .addSeparatorComponents(
           new SeparatorBuilder()
@@ -64,8 +64,9 @@ client.on('messageCreate', async (message) => {
     return message.reply({ components });
   }
 
-  // 🔹 SAY (ADMIN + AUTO DELETE)
+  // ================= .SAY =================
   if (cmd === "say") {
+    // admin only
     if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return message.reply("❌ You don't have permission to use this command.");
     }
@@ -73,6 +74,7 @@ client.on('messageCreate', async (message) => {
     const channel = message.mentions.channels.first();
     if (!channel) return message.reply("❌ Mention a channel.");
 
+    // extract message text properly
     const text = message.content
       .slice(PREFIX.length + cmd.length)
       .trim()
@@ -83,10 +85,9 @@ client.on('messageCreate', async (message) => {
 
     await channel.send(text);
 
-    // delete command
+    // 🧹 delete command message
     await message.delete().catch(() => {});
   }
 });
 
-// ================= LOGIN =================
 client.login(process.env.TOKEN);
