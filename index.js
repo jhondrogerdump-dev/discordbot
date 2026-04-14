@@ -18,9 +18,9 @@ const ms = require("ms");
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const PREFIX = "..";
+const PREFIX = ".";
 
-// ---------------- SAFE JSON DB ----------------
+// ---------------- SAFE DB ----------------
 const file = "./warns.json";
 if (!fs.existsSync(file)) fs.writeFileSync(file, "{}");
 
@@ -31,23 +31,23 @@ function write(data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-function warnUser(userId, guildId, reason, mod) {
+function warnUser(id, guild, reason, mod) {
   const db = read();
-  if (!db[guildId]) db[guildId] = {};
-  if (!db[guildId][userId]) db[guildId][userId] = [];
+  if (!db[guild]) db[guild] = {};
+  if (!db[guild][id]) db[guild][id] = [];
 
-  db[guildId][userId].push({ reason, mod, time: Date.now() });
+  db[guild][id].push({ reason, mod, time: Date.now() });
   write(db);
 }
 
-function getWarns(userId, guildId) {
+function getWarns(id, guild) {
   const db = read();
-  return db[guildId]?.[userId] || [];
+  return db[guild]?.[id] || [];
 }
 
-function clearWarns(userId, guildId) {
+function clearWarns(id, guild) {
   const db = read();
-  if (db[guildId]) db[guildId][userId] = [];
+  if (db[guild]) db[guild][id] = [];
   write(db);
 }
 
@@ -57,11 +57,13 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildModeration
   ]
 });
 
 const afk = new Map();
+const logChannel = new Map();
 
 // ---------------- CONTAINER ----------------
 function sendContainer(channel, title, desc) {
@@ -80,6 +82,15 @@ function sendContainer(channel, title, desc) {
     components: [container],
     flags: MessageFlags.IsComponentsV2
   });
+}
+
+// ---------------- LOG ----------------
+async function log(guild, text) {
+  const id = logChannel.get(guild.id);
+  if (!id) return;
+
+  const ch = guild.channels.cache.get(id);
+  if (ch) ch.send(text);
 }
 
 // ---------------- READY ----------------
@@ -104,18 +115,11 @@ client.once("ready", async () => {
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
-  // AFK RETURN
+  // AFK return
   if (afk.has(message.author.id)) {
     afk.delete(message.author.id);
-    sendContainer(message.channel, "AFK", "Welcome back!");
+    message.channel.send("Welcome back!");
   }
-
-  // AFK MENTION
-  message.mentions.users.forEach(u => {
-    if (afk.has(u.id)) {
-      message.channel.send(`${u.tag} is AFK: ${afk.get(u.id)}`);
-    }
-  });
 
   if (!message.content.startsWith(PREFIX)) return;
 
@@ -124,7 +128,7 @@ client.on("messageCreate", async (message) => {
 
   // ---------------- PING ----------------
   if (cmd === "ping") {
-    return sendContainer(message.channel, "Ping", `${client.ws.ping}ms`);
+    return message.channel.send(`🏓 ${client.ws.ping}ms`);
   }
 
   // ---------------- AVATAR ----------------
@@ -140,10 +144,23 @@ client.on("messageCreate", async (message) => {
 
   // ---------------- AFK ----------------
   if (cmd === "afk") {
-    const reason = args.join(" ") || "AFK";
-    afk.set(message.author.id, reason);
+    afk.set(message.author.id, args.join(" ") || "AFK");
+    return message.channel.send("AFK set.");
+  }
 
-    return sendContainer(message.channel, "AFK Set", reason);
+  // ---------------- SAY (NEW FIXED) ----------------
+  if (cmd === "say") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      return message.reply("Admin only.");
+    }
+
+    const channel = message.mentions.channels.first();
+    const text = args.slice(1).join(" ");
+
+    if (!channel || !text) return message.reply("Usage: .say #channel message");
+
+    await message.delete().catch(() => {});
+    return channel.send(text);
   }
 
   // ---------------- WARN ----------------
@@ -155,7 +172,7 @@ client.on("messageCreate", async (message) => {
 
     warnUser(user.id, message.guild.id, reason, message.author.tag);
 
-    return sendContainer(message.channel, "Warned", `${user.tag}\n${reason}`);
+    return message.channel.send(`${user.tag} warned: ${reason}`);
   }
 
   // ---------------- WARNINGS ----------------
@@ -164,13 +181,10 @@ client.on("messageCreate", async (message) => {
 
     const warns = getWarns(user.id, message.guild.id);
 
-    if (!warns.length)
-      return sendContainer(message.channel, "Warnings", "None");
+    if (!warns.length) return message.channel.send("No warnings.");
 
-    return sendContainer(
-      message.channel,
-      "Warnings",
-      warns.map((w,i)=>`**${i+1}.** ${w.reason} (${w.mod})`).join("\n")
+    return message.channel.send(
+      warns.map((w,i)=>`${i+1}. ${w.reason} (${w.mod})`).join("\n")
     );
   }
 
@@ -181,7 +195,7 @@ client.on("messageCreate", async (message) => {
 
     clearWarns(user.id, message.guild.id);
 
-    return sendContainer(message.channel, "Unwarned", user.tag);
+    return message.channel.send("Warnings cleared.");
   }
 
   // ---------------- KICK ----------------
@@ -190,8 +204,7 @@ client.on("messageCreate", async (message) => {
     if (!user) return;
 
     await user.kick();
-
-    return sendContainer(message.channel, "Kicked", user.user.tag);
+    return message.channel.send("Kicked.");
   }
 
   // ---------------- BAN ----------------
@@ -200,26 +213,46 @@ client.on("messageCreate", async (message) => {
     if (!user) return;
 
     await user.ban();
+    return message.channel.send("Banned.");
+  }
 
-    return sendContainer(message.channel, "Banned", user.user.tag);
+  // ---------------- UNBAN ----------------
+  if (cmd === "unban") {
+    await message.guild.bans.remove(args[0]);
+    return message.channel.send("Unbanned.");
+  }
+
+  // ---------------- TIMEOUT ----------------
+  if (cmd === "timeout") {
+    const user = message.mentions.members.first();
+    await user.timeout(ms(args[1]));
+    return message.channel.send("Timed out.");
+  }
+
+  // ---------------- UNTIMEOUT ----------------
+  if (cmd === "untimeout") {
+    const user = message.mentions.members.first();
+    await user.timeout(null);
+    return message.channel.send("Untimed out.");
   }
 
   // ---------------- HELP ----------------
   if (cmd === "help") {
-    return sendContainer(
-      message.channel,
-      "Commands",
-      `
-..ping
-..avatar
-..afk
-..warn
-..warnings
-..unwarn
-..kick
-..ban
-      `
-    );
+    return message.channel.send(`
+Commands:
+.say #channel msg
+.warn
+.warnings
+.unwarn
+.kick
+.ban
+.unban
+.timeout
+.untimeout
+.afk
+.avatar
+.ping
+`);
   }
 });
 
@@ -238,9 +271,6 @@ client.on("interactionCreate", async i => {
           .setImage(i.user.displayAvatarURL({ size: 1024 }))
       ]
     });
-
-  if (i.commandName === "help")
-    return i.reply("Use ..help");
 });
 
 // ---------------- LOGIN ----------------
