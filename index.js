@@ -13,13 +13,43 @@ const {
   SlashCommandBuilder
 } = require("discord.js");
 
+const fs = require("fs");
 const ms = require("ms");
-const db = require("./db");
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-
 const PREFIX = "..";
+
+// ---------------- SAFE JSON DB ----------------
+const file = "./warns.json";
+if (!fs.existsSync(file)) fs.writeFileSync(file, "{}");
+
+function read() {
+  return JSON.parse(fs.readFileSync(file));
+}
+function write(data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function warnUser(userId, guildId, reason, mod) {
+  const db = read();
+  if (!db[guildId]) db[guildId] = {};
+  if (!db[guildId][userId]) db[guildId][userId] = [];
+
+  db[guildId][userId].push({ reason, mod, time: Date.now() });
+  write(db);
+}
+
+function getWarns(userId, guildId) {
+  const db = read();
+  return db[guildId]?.[userId] || [];
+}
+
+function clearWarns(userId, guildId) {
+  const db = read();
+  if (db[guildId]) db[guildId][userId] = [];
+  write(db);
+}
 
 // ---------------- BOT ----------------
 const client = new Client({
@@ -27,13 +57,11 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildModeration
+    GatewayIntentBits.GuildMembers
   ]
 });
 
 const afk = new Map();
-let logChannelMap = new Map();
 
 // ---------------- CONTAINER ----------------
 function sendContainer(channel, title, desc) {
@@ -54,22 +82,12 @@ function sendContainer(channel, title, desc) {
   });
 }
 
-// ---------------- LOG ----------------
-async function sendLog(guild, text) {
-  const id = logChannelMap.get(guild.id);
-  if (!id) return;
-
-  const ch = guild.channels.cache.get(id);
-  if (ch) ch.send(text);
-}
-
 // ---------------- READY ----------------
 client.once("ready", async () => {
   console.log(`${client.user.tag} online`);
 
-  // Slash commands
   const commands = [
-    new SlashCommandBuilder().setName("ping").setDescription("Latency"),
+    new SlashCommandBuilder().setName("ping").setDescription("Ping"),
     new SlashCommandBuilder().setName("avatar").setDescription("Avatar"),
     new SlashCommandBuilder().setName("help").setDescription("Help")
   ].map(c => c.toJSON());
@@ -95,7 +113,7 @@ client.on("messageCreate", async (message) => {
   // AFK MENTION
   message.mentions.users.forEach(u => {
     if (afk.has(u.id)) {
-      message.channel.send(`${u.tag} is AFK\nreason: ${afk.get(u.id)}`);
+      message.channel.send(`${u.tag} is AFK: ${afk.get(u.id)}`);
     }
   });
 
@@ -103,8 +121,6 @@ client.on("messageCreate", async (message) => {
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const cmd = args.shift().toLowerCase();
-
-  const member = message.member;
 
   // ---------------- PING ----------------
   if (cmd === "ping") {
@@ -116,7 +132,7 @@ client.on("messageCreate", async (message) => {
     const user = message.mentions.users.first() || message.author;
 
     const embed = new EmbedBuilder()
-      .setTitle(`${user.tag}`)
+      .setTitle(user.tag)
       .setImage(user.displayAvatarURL({ size: 1024 }));
 
     return message.channel.send({ embeds: [embed] });
@@ -137,7 +153,7 @@ client.on("messageCreate", async (message) => {
 
     const reason = args.slice(1).join(" ") || "No reason";
 
-    db.warn(user.id, message.guild.id, reason, message.author.tag);
+    warnUser(user.id, message.guild.id, reason, message.author.tag);
 
     return sendContainer(message.channel, "Warned", `${user.tag}\n${reason}`);
   }
@@ -146,7 +162,7 @@ client.on("messageCreate", async (message) => {
   if (cmd === "warnings") {
     const user = message.mentions.users.first() || message.author;
 
-    const warns = db.get(user.id, message.guild.id);
+    const warns = getWarns(user.id, message.guild.id);
 
     if (!warns.length)
       return sendContainer(message.channel, "Warnings", "None");
@@ -163,7 +179,7 @@ client.on("messageCreate", async (message) => {
     const user = message.mentions.users.first();
     if (!user) return;
 
-    db.clear(user.id, message.guild.id);
+    clearWarns(user.id, message.guild.id);
 
     return sendContainer(message.channel, "Unwarned", user.tag);
   }
@@ -173,7 +189,7 @@ client.on("messageCreate", async (message) => {
     const user = message.mentions.members.first();
     if (!user) return;
 
-    await user.kick(args.join(" ") || "No reason");
+    await user.kick();
 
     return sendContainer(message.channel, "Kicked", user.user.tag);
   }
@@ -183,35 +199,9 @@ client.on("messageCreate", async (message) => {
     const user = message.mentions.members.first();
     if (!user) return;
 
-    await user.ban({ reason: args.join(" ") || "No reason" });
+    await user.ban();
 
     return sendContainer(message.channel, "Banned", user.user.tag);
-  }
-
-  // ---------------- UNBAN ----------------
-  if (cmd === "unban") {
-    const id = args[0];
-    await message.guild.bans.remove(id);
-
-    return sendContainer(message.channel, "Unbanned", id);
-  }
-
-  // ---------------- TIMEOUT ----------------
-  if (cmd === "timeout") {
-    const user = message.mentions.members.first();
-    const time = args[1];
-
-    await user.timeout(ms(time));
-
-    return sendContainer(message.channel, "Timeout", user.user.tag);
-  }
-
-  // ---------------- UNTIMEOUT ----------------
-  if (cmd === "untimeout") {
-    const user = message.mentions.members.first();
-    await user.timeout(null);
-
-    return sendContainer(message.channel, "Untimeout", user.user.tag);
   }
 
   // ---------------- HELP ----------------
@@ -228,9 +218,6 @@ client.on("messageCreate", async (message) => {
 ..unwarn
 ..kick
 ..ban
-..unban
-..timeout
-..untimeout
       `
     );
   }
