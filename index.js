@@ -2,24 +2,29 @@ const {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
+  EmbedBuilder,
   ContainerBuilder,
   TextDisplayBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
-  MessageFlags
+  MessageFlags,
+  REST,
+  Routes,
+  SlashCommandBuilder
 } = require("discord.js");
 
 const Database = require("better-sqlite3");
 const ms = require("ms");
-const fs = require("fs");
 
 // ---------------- ENV ----------------
 const TOKEN = process.env.TOKEN;
-const PREFIX = process.env.PREFIX || ".";
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
-// ---------------- SETUP ----------------
-if (!fs.existsSync("./data")) fs.mkdirSync("./data");
+// ---------------- PREFIX ----------------
+const PREFIX = "..";
 
+// ---------------- DB ----------------
 const db = new Database("./data/warns.db");
 
 db.exec(`
@@ -31,21 +36,26 @@ CREATE TABLE IF NOT EXISTS warns (
   moderator TEXT,
   timestamp INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS logs (
+  guildId TEXT PRIMARY KEY,
+  channelId TEXT
+);
 `);
 
-// ---------------- BOT ----------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildModeration
   ]
 });
 
 const afk = new Map();
 
-// ---------------- CONTAINER HELPER ----------------
+// ---------------- CONTAINER ----------------
 function sendContainer(channel, title, desc) {
   const container = new ContainerBuilder()
     .addTextDisplayComponents(
@@ -64,28 +74,41 @@ function sendContainer(channel, title, desc) {
   });
 }
 
+// ---------------- LOGGING ----------------
+async function log(guild, text) {
+  const data = db.prepare("SELECT channelId FROM logs WHERE guildId=?").get(guild.id);
+  if (!data) return;
+
+  const channel = guild.channels.cache.get(data.channelId);
+  if (!channel) return;
+
+  channel.send(text);
+}
+
 // ---------------- READY ----------------
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+client.once("ready", async () => {
+  console.log(`${client.user.tag} online`);
+
+  // Slash commands register
+  const commands = [
+    new SlashCommandBuilder().setName("ping").setDescription("Bot latency"),
+    new SlashCommandBuilder().setName("avatar").setDescription("User avatar"),
+    new SlashCommandBuilder().setName("help").setDescription("Help menu")
+  ].map(c => c.toJSON());
+
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+  await rest.put(
+    Routes.applicationCommands(CLIENT_ID),
+    { body: commands }
+  );
 });
 
-// ---------------- MESSAGE ----------------
+// ---------------- MESSAGE EVENTS ----------------
 client.on("messageCreate", async (message) => {
   if (!message.guild || message.author.bot) return;
 
-  // AFK return
-  if (afk.has(message.author.id)) {
-    afk.delete(message.author.id);
-    sendContainer(message.channel, "AFK", "Welcome back! AFK removed.");
-  }
-
-  // AFK mention
-  message.mentions.users.forEach(u => {
-    if (afk.has(u.id)) {
-      message.channel.send(`${u.tag} is AFK\nreason: ${afk.get(u.id)}`);
-    }
-  });
-
+  // PREFIX COMMANDS
   if (!message.content.startsWith(PREFIX)) return;
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
@@ -93,63 +116,27 @@ client.on("messageCreate", async (message) => {
 
   const member = message.member;
 
-  // ---------------- PING ----------------
-  if (cmd === "ping") {
-    const sent = await message.channel.send("Pinging...");
-    const latency = sent.createdTimestamp - message.createdTimestamp;
+  // ---------------- SET LOGGING ----------------
+  if (cmd === "setloggingchannel") {
+    if (!member.permissions.has(PermissionsBitField.Flags.Administrator))
+      return sendContainer(message.channel, "Error", "Admin only.");
 
-    return sendContainer(
-      message.channel,
-      "🏓 Pong!",
-      `Latency: **${latency}ms**`
-    );
+    db.prepare("INSERT OR REPLACE INTO logs (guildId, channelId) VALUES (?, ?)")
+      .run(message.guild.id, message.channel.id);
+
+    return sendContainer(message.channel, "Logging Enabled", "Logs activated.");
   }
 
-  // ---------------- AVATAR ----------------
-  if (cmd === "avatar") {
-    const user = message.mentions.users.first() || message.author;
+  // ---------------- DISABLE LOGGING ----------------
+  if (cmd === "disableloggingchannel") {
+    db.prepare("DELETE FROM logs WHERE guildId=?")
+      .run(message.guild.id);
 
-    const container = new ContainerBuilder()
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent("## User's Avatar")
-      )
-      .addSeparatorComponents(
-        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-      )
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`**${user.tag}**`)
-      )
-      .addSeparatorComponents(
-        new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-      )
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(user.displayAvatarURL({ size: 1024 }))
-      );
-
-    return message.channel.send({
-      components: [container],
-      flags: MessageFlags.IsComponentsV2
-    });
-  }
-
-  // ---------------- AFK ----------------
-  if (cmd === "afk") {
-    const reason = args.join(" ") || "AFK";
-
-    afk.set(message.author.id, reason);
-
-    return sendContainer(
-      message.channel,
-      "AFK System",
-      `user is **Afk**\n---\n**reason : ${reason}**`
-    );
+    return sendContainer(message.channel, "Logging Disabled", "Logs removed.");
   }
 
   // ---------------- WARN ----------------
   if (cmd === "warn") {
-    if (!member.permissions.has(PermissionsBitField.Flags.KickMembers))
-      return sendContainer(message.channel, "Error", "No permission.");
-
     const user = message.mentions.users.first();
     if (!user) return sendContainer(message.channel, "Warn", "Mention user.");
 
@@ -159,69 +146,102 @@ client.on("messageCreate", async (message) => {
       "INSERT INTO warns (userId, guildId, reason, moderator, timestamp) VALUES (?, ?, ?, ?, ?)"
     ).run(user.id, message.guild.id, reason, message.author.id, Date.now());
 
-    return sendContainer(message.channel, "Warned", `${user.tag}\nReason: ${reason}`);
+    return sendContainer(message.channel, "User Warned", `${user.tag}\nReason: ${reason}`);
   }
 
-  // ---------------- KICK ----------------
-  if (cmd === "kick") {
-    const user = message.mentions.members.first();
-    if (!user) return sendContainer(message.channel, "Kick", "Mention user.");
+  // ---------------- WARNINGS ----------------
+  if (cmd === "warnings") {
+    const user = message.mentions.users.first() || message.author;
 
-    await user.kick(args.join(" ") || "No reason");
+    const warns = db.prepare(
+      "SELECT * FROM warns WHERE userId=? AND guildId=?"
+    ).all(user.id, message.guild.id);
 
-    return sendContainer(message.channel, "Kicked", `${user.user.tag}`);
+    if (!warns.length)
+      return sendContainer(message.channel, "Warnings", "No warnings found.");
+
+    let text = warns.map(w =>
+      `• ${w.reason} (by <@${w.moderator}>)`
+    ).join("\n");
+
+    return sendContainer(message.channel, `${user.tag} Warnings`, text);
   }
 
-  // ---------------- BAN ----------------
-  if (cmd === "ban") {
-    if (!member.permissions.has(PermissionsBitField.Flags.BanMembers))
-      return sendContainer(message.channel, "Error", "No permission.");
+  // ---------------- AVATAR (EMBED FIXED) ----------------
+  if (cmd === "avatar") {
+    const user = message.mentions.users.first() || message.author;
 
-    const user = message.mentions.members.first();
-    if (!user) return sendContainer(message.channel, "Ban", "Mention user.");
+    const embed = new EmbedBuilder()
+      .setTitle(`${user.tag}'s Avatar`)
+      .setImage(user.displayAvatarURL({ size: 1024 }))
+      .setColor("Blue");
 
-    await user.ban({ reason: args.join(" ") || "No reason" });
-
-    return sendContainer(message.channel, "Banned", `${user.user.tag}`);
+    return message.channel.send({ embeds: [embed] });
   }
 
-  // ---------------- UNBAN ----------------
-  if (cmd === "unban") {
-    const id = args[0];
-    if (!id) return sendContainer(message.channel, "Unban", "User ID required.");
+  // ---------------- HELP ----------------
+  if (cmd === "help") {
+    return sendContainer(
+      message.channel,
+      "Bot Help",
+      `
+..warn @user reason
+..warnings @user
+..kick @user
+..ban @user
+..unban id
+..timeout @user 10m
+..untimeout @user
+..afk reason
+..avatar @user
+..setloggingchannel
+..disableloggingchannel
+      `
+    );
+  }
+});
 
-    await message.guild.bans.remove(id);
+// ---------------- LOG EVENTS ----------------
+client.on("messageDelete", m => log(m.guild, `🗑️ Message deleted in ${m.channel}`));
+client.on("messageUpdate", (o, n) => log(n.guild, `✏️ Message edited in ${n.channel}`));
 
-    return sendContainer(message.channel, "Unbanned", id);
+client.on("guildBanAdd", b => log(b.guild, `🔨 User banned: ${b.user.tag}`));
+client.on("guildBanRemove", b => log(b.guild, `♻️ User unbanned: ${b.user.tag}`));
+
+client.on("guildMemberUpdate", (o, n) => {
+  if (o.communicationDisabledUntil !== n.communicationDisabledUntil) {
+    log(n.guild, `⏳ Timeout changed for ${n.user.tag}`);
+  }
+});
+
+client.on("roleCreate", r => log(r.guild, `🎭 Role created: ${r.name}`));
+client.on("roleDelete", r => log(r.guild, `❌ Role deleted: ${r.name}`));
+
+client.on("channelCreate", c => log(c.guild, `📁 Channel created: ${c.name}`));
+client.on("channelDelete", c => log(c.guild, `🧹 Channel deleted: ${c.name}`));
+
+// ---------------- SLASH COMMANDS ----------------
+client.on("interactionCreate", async (i) => {
+  if (!i.isChatInputCommand()) return;
+
+  if (i.commandName === "ping") {
+    return i.reply(`🏓 ${client.ws.ping}ms`);
   }
 
-  // ---------------- TIMEOUT ----------------
-  if (cmd === "timeout") {
-    const user = message.mentions.members.first();
-    const time = args[1];
+  if (i.commandName === "avatar") {
+    const user = i.user;
 
-    if (!user || !time)
-      return sendContainer(message.channel, "Timeout", ".timeout @user 10m");
+    const embed = new EmbedBuilder()
+      .setTitle(`${user.tag}`)
+      .setImage(user.displayAvatarURL({ size: 1024 }));
 
-    await user.timeout(ms(time), "Timeout");
-
-    return sendContainer(message.channel, "Timed Out", `${user.user.tag}`);
+    return i.reply({ embeds: [embed] });
   }
 
-  // ---------------- UNTIMEOUT ----------------
-  if (cmd === "untimeout") {
-    const user = message.mentions.members.first();
-    if (!user) return sendContainer(message.channel, "Untimeout", "Mention user.");
-
-    await user.timeout(null);
-
-    return sendContainer(message.channel, "Untimeout", `${user.user.tag}`);
+  if (i.commandName === "help") {
+    return i.reply("Use ..help for full commands");
   }
 });
 
 // ---------------- LOGIN ----------------
-if (!TOKEN) {
-  console.log("❌ Missing TOKEN in Railway variables");
-} else {
-  client.login(TOKEN);
-}
+client.login(TOKEN);
