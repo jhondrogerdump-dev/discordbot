@@ -1,6 +1,6 @@
 {
-  "name": "full-mod-bot",
-  "version": "2.0.0",
+  "name": "discord-bot",
+  "version": "1.0.0",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "discord.js": "^14.18.0",
-    "better-sqlite3": "^9.6.0",
     "ms": "^2.1.3"
   }
 }
