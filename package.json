@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
-    "discord.js": "^14.16.3",
-    "better-sqlite3": "^11.3.0",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.18.0",
+    "better-sqlite3": "^9.6.0",
+    "ms": "^2.1.3"
   }
 }
