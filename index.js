@@ -30,14 +30,35 @@ client.once("ready", async () => {
       // ===== CONTAINER MESSAGE =====
       const container = new ContainerBuilder()
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("**tangina mo 6777**")
+          new TextDisplayBuilder().setContent("**Script loader
+                                              -# copy for pc**")
         )
         .addSeparatorComponents(
           new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
         )
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("Bot 677")
+          new TextDisplayBuilder().setContent("```loadstring(game:HttpGet("https://vss.pandadevelopment.net/virtual/file/7d7489f4b9e04ff7"))()```")
         );
+          .addSeparatorComponents(
+          new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
+        )
+          await channel.send({
+  components: [
+    container,
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 5,
+          label: "supported games",
+          url: "https://discord.com/channels/1491419835039612958/1492584777881227515"
+        }
+      ]
+    }
+  ],
+  flags: 1 << 15
+});
 
       await channel.send({
         components: [container],
