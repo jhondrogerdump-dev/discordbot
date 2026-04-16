@@ -4,7 +4,7 @@ client.once("ready", async () => {
   if (sent) return;
   sent = true;
 
-  const channel = await client.channels.fetch("YOUR_CHANNEL_ID");
+  const channel = await client.channels.fetch("1493379919294627933");
 
   const container = new ContainerBuilder()
     .addTextDisplayComponents(
