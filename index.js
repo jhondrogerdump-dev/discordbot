@@ -32,7 +32,7 @@ client.once("ready", async () => {
         )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "Kryzen.net supported games
+            "
 > - [Diesel n steel](https://www.roblox.com/games/131667667758514/Diesel-n-steel)
 > - [be a brainrot](https://www.roblox.com/games/105626692504093/Be-a-Brainrot)
 > - [swing obby for brainrots](https://www.roblox.com/games/114640202062357/Swing-Obby-for-Brainrots)
