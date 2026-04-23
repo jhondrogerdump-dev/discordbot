@@ -1,4 +1,3 @@
-require('dotenv').config();
 const {
   Client,
   GatewayIntentBits,
@@ -7,11 +6,11 @@ const {
 } = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+  intents: [GatewayIntentBits.Guilds]
 });
 
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 
   // 🔴 DND + Custom Status
   client.user.setPresence({
@@ -28,50 +27,50 @@ client.on('interactionCreate', async interaction => {
 
   const { commandName } = interaction;
 
-  // 🔨 BAN
+  // BAN
   if (commandName === 'ban') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
 
     const user = interaction.options.getUser('target');
-    const member = interaction.guild.members.cache.get(user.id);
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
 
     if (!member) return interaction.reply('User not found.');
 
     await member.ban();
-    interaction.reply(`🔨 Banned ${user.tag}`);
+    return interaction.reply(`🔨 Banned ${user.tag}`);
   }
 
-  // 👢 KICK
+  // KICK
   if (commandName === 'kick') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
 
     const user = interaction.options.getUser('target');
-    const member = interaction.guild.members.cache.get(user.id);
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
 
     if (!member) return interaction.reply('User not found.');
 
     await member.kick();
-    interaction.reply(`👢 Kicked ${user.tag}`);
+    return interaction.reply(`👢 Kicked ${user.tag}`);
   }
 
-  // ⏱ TIMEOUT
+  // TIMEOUT
   if (commandName === 'timeout') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
 
     const user = interaction.options.getUser('target');
     const minutes = interaction.options.getInteger('minutes');
-    const member = interaction.guild.members.cache.get(user.id);
+    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
 
     if (!member) return interaction.reply('User not found.');
 
     await member.timeout(minutes * 60 * 1000);
-    interaction.reply(`⏱ Timed out ${user.tag} for ${minutes} minutes`);
+    return interaction.reply(`⏱ Timed out ${user.tag} for ${minutes} min`);
   }
 
-  // 🧹 CLEAR
+  // CLEAR
   if (commandName === 'clear') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
@@ -79,11 +78,12 @@ client.on('interactionCreate', async interaction => {
     const amount = interaction.options.getInteger('amount');
 
     if (amount < 1 || amount > 100)
-      return interaction.reply({ content: '1-100 only.', ephemeral: true });
+      return interaction.reply({ content: '1–100 only.', ephemeral: true });
 
     await interaction.channel.bulkDelete(amount, true);
-    interaction.reply({ content: `🧹 Deleted ${amount} messages`, ephemeral: true });
+    return interaction.reply({ content: `🧹 Deleted ${amount}`, ephemeral: true });
   }
 });
 
+// 🔑 LOGIN (Railway uses ENV)
 client.login(process.env.TOKEN);
