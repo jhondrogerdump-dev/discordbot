@@ -25,14 +25,23 @@ client.once("ready", async () => {
 
       const container = new ContainerBuilder()
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("**Script loader**\n-# copy for pc")
+          new TextDisplayBuilder().setContent("**Kryzen.net**\n-# supported games")
         )
         .addSeparatorComponents(
           new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
         )
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            "```loadstring(game:HttpGet(\"https://vss.pandadevelopment.net/virtual/file/7d7489f4b9e04ff7\"))()```"
+            "Kryzen.net supported games
+> - [Diesel n steel](https://www.roblox.com/games/131667667758514/Diesel-n-steel)
+> - [be a brainrot](https://www.roblox.com/games/105626692504093/Be-a-Brainrot)
+> - [swing obby for brainrots](https://www.roblox.com/games/114640202062357/Swing-Obby-for-Brainrots)
+> - [be a lucky block](https://www.roblox.com/games/124473577469410/Be-a-Lucky-Block?gameSearchSessionInfo=2090b61e-90dd-4dfd-8e5a-d1fa896baf47&isAd=false&nativeAdData=&numberOfLoadedTiles=40&page=searchPage&placeId=124473577469410&position=0&universeId=9787206684)
+> - [car dealership tycoon](https://www.roblox.com/games/1554960397/2X-CASH-Car-Dealership-Tycoon)
+> - [Piggy](https://www.roblox.com/games/4623386862/Piggy)
+>  - [Basketball Legends](https://www.roblox.com/games/14259168147/Basketball-Legends)
+> -    [Arsenal](https://www.roblox.com/games/286090429/Arsenal) 
+-# more games will be supported soon"
           )
         )
         .addSeparatorComponents(
