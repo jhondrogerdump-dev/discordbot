@@ -1,77 +1,89 @@
+require('dotenv').config();
 const {
   Client,
   GatewayIntentBits,
-  ContainerBuilder,
-  TextDisplayBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize
-} = require("discord.js");
+  PermissionsBitField,
+  ActivityType
+} = require('discord.js');
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-client.once("ready", async () => {
-  console.log(`${client.user.tag} is online`);
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
 
-  setTimeout(async () => {
-    try {
-      const channel = await client.channels.fetch("1493379919294627933");
-      if (!channel) return console.log("Channel not found");
+  // 🔴 DND + Custom Status
+  client.user.setPresence({
+    status: 'dnd',
+    activities: [{
+      name: 'Owned by Nex',
+      type: ActivityType.Custom
+    }]
+  });
+});
 
-      const container = new ContainerBuilder()
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("**Kryzen.net**\n-# supported games")
-        )
-        .addSeparatorComponents(
-          new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-        )
-        .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            "
-> - [Diesel n steel](https://www.roblox.com/games/131667667758514/Diesel-n-steel)
-> - [be a brainrot](https://www.roblox.com/games/105626692504093/Be-a-Brainrot)
-> - [swing obby for brainrots](https://www.roblox.com/games/114640202062357/Swing-Obby-for-Brainrots)
-> - [be a lucky block](https://www.roblox.com/games/124473577469410/Be-a-Lucky-Block?gameSearchSessionInfo=2090b61e-90dd-4dfd-8e5a-d1fa896baf47&isAd=false&nativeAdData=&numberOfLoadedTiles=40&page=searchPage&placeId=124473577469410&position=0&universeId=9787206684)
-> - [car dealership tycoon](https://www.roblox.com/games/1554960397/2X-CASH-Car-Dealership-Tycoon)
-> - [Piggy](https://www.roblox.com/games/4623386862/Piggy)
->  - [Basketball Legends](https://www.roblox.com/games/14259168147/Basketball-Legends)
-> -    [Arsenal](https://www.roblox.com/games/286090429/Arsenal) 
--# more games will be supported soon"
-          )
-        )
-        .addSeparatorComponents(
-          new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small)
-        );
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-      await channel.send({
-        components: [
-          container,
-          {
-            type: 1,
-            components: [
-              {
-                type: 2,
-                style: 5,
-                label: "supported games",
-                url: "https://discord.com/channels/1491419835039612958/1492584777881227515"
-              }
-            ]
-          }
-        ],
-        flags: 1 << 15
-      });
+  const { commandName } = interaction;
 
-      console.log("Container sent!");
+  // 🔨 BAN
+  if (commandName === 'ban') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
 
-    } catch (err) {
-      console.log("Container error:", err);
-    }
-  }, 3000);
+    const user = interaction.options.getUser('target');
+    const member = interaction.guild.members.cache.get(user.id);
+
+    if (!member) return interaction.reply('User not found.');
+
+    await member.ban();
+    interaction.reply(`🔨 Banned ${user.tag}`);
+  }
+
+  // 👢 KICK
+  if (commandName === 'kick') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers))
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
+
+    const user = interaction.options.getUser('target');
+    const member = interaction.guild.members.cache.get(user.id);
+
+    if (!member) return interaction.reply('User not found.');
+
+    await member.kick();
+    interaction.reply(`👢 Kicked ${user.tag}`);
+  }
+
+  // ⏱ TIMEOUT
+  if (commandName === 'timeout') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
+
+    const user = interaction.options.getUser('target');
+    const minutes = interaction.options.getInteger('minutes');
+    const member = interaction.guild.members.cache.get(user.id);
+
+    if (!member) return interaction.reply('User not found.');
+
+    await member.timeout(minutes * 60 * 1000);
+    interaction.reply(`⏱ Timed out ${user.tag} for ${minutes} minutes`);
+  }
+
+  // 🧹 CLEAR
+  if (commandName === 'clear') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
+
+    const amount = interaction.options.getInteger('amount');
+
+    if (amount < 1 || amount > 100)
+      return interaction.reply({ content: '1-100 only.', ephemeral: true });
+
+    await interaction.channel.bulkDelete(amount, true);
+    interaction.reply({ content: `🧹 Deleted ${amount} messages`, ephemeral: true });
+  }
 });
 
 client.login(process.env.TOKEN);
