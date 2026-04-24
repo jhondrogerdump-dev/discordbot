@@ -6,13 +6,18 @@ const {
 } = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
+
+const PREFIX = ".";
 
 client.once('ready', () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // 🔴 DND + Custom Status
   client.user.setPresence({
     status: 'dnd',
     activities: [{
@@ -22,68 +27,109 @@ client.once('ready', () => {
   });
 });
 
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+// 📩 MESSAGE COMMANDS
+client.on('messageCreate', async (message) => {
+  if (!message.content.startsWith(PREFIX) || message.author.bot) return;
 
-  const { commandName } = interaction;
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-  // BAN
-  if (commandName === 'ban') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
-      return interaction.reply({ content: 'No permission.', ephemeral: true });
+  // 🔨 BAN
+  if (cmd === "ban") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.BanMembers))
+      return message.reply("No permission.");
 
-    const user = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const user = message.mentions.users.first();
+    if (!user) return message.reply("Mention a user.");
 
-    if (!member) return interaction.reply('User not found.');
+    const member = await message.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return message.reply("User not found.");
 
     await member.ban();
-    return interaction.reply(`🔨 Banned ${user.tag}`);
+    message.reply(`🔨 Banned ${user.tag}`);
   }
 
-  // KICK
-  if (commandName === 'kick') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers))
-      return interaction.reply({ content: 'No permission.', ephemeral: true });
+  // 👢 KICK
+  if (cmd === "kick") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.KickMembers))
+      return message.reply("No permission.");
 
-    const user = interaction.options.getUser('target');
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const user = message.mentions.users.first();
+    if (!user) return message.reply("Mention a user.");
 
-    if (!member) return interaction.reply('User not found.');
+    const member = await message.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return message.reply("User not found.");
 
     await member.kick();
-    return interaction.reply(`👢 Kicked ${user.tag}`);
+    message.reply(`👢 Kicked ${user.tag}`);
   }
 
-  // TIMEOUT
-  if (commandName === 'timeout') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
-      return interaction.reply({ content: 'No permission.', ephemeral: true });
+  // ⏱ TIMEOUT
+  if (cmd === "timeout") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
+      return message.reply("No permission.");
 
-    const user = interaction.options.getUser('target');
-    const minutes = interaction.options.getInteger('minutes');
-    const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const user = message.mentions.users.first();
+    const minutes = parseInt(args[1]);
 
-    if (!member) return interaction.reply('User not found.');
+    if (!user || isNaN(minutes))
+      return message.reply("Usage: .timeout @user 5");
+
+    const member = await message.guild.members.fetch(user.id).catch(() => null);
+    if (!member) return message.reply("User not found.");
 
     await member.timeout(minutes * 60 * 1000);
-    return interaction.reply(`⏱ Timed out ${user.tag} for ${minutes} min`);
+    message.reply(`⏱ Timed out ${user.tag} for ${minutes} min`);
   }
 
-  // CLEAR
-  if (commandName === 'clear') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
-      return interaction.reply({ content: 'No permission.', ephemeral: true });
+  // 🧹 CLEAR
+  if (cmd === "clear") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
+      return message.reply("No permission.");
 
-    const amount = interaction.options.getInteger('amount');
+    const amount = parseInt(args[0]);
+    if (!amount || amount < 1 || amount > 100)
+      return message.reply("1–100 only.");
 
-    if (amount < 1 || amount > 100)
-      return interaction.reply({ content: '1–100 only.', ephemeral: true });
+    await message.channel.bulkDelete(amount, true);
+    message.channel.send(`🧹 Deleted ${amount}`).then(msg => {
+      setTimeout(() => msg.delete(), 3000);
+    });
+  }
 
-    await interaction.channel.bulkDelete(amount, true);
-    return interaction.reply({ content: `🧹 Deleted ${amount}`, ephemeral: true });
+  // 😈 STEAL EMOJI
+  if (cmd === "steal") {
+    if (!message.member.permissions.has(PermissionsBitField.Flags.ManageEmojisAndStickers))
+      return message.reply("No permission.");
+
+    const emoji = args[0];
+    const name = args[1];
+
+    if (!emoji || !name)
+      return message.reply("Usage: .steal <emoji> <name>");
+
+    const regex = /<?a?:\w+:(\d+)>?/;
+    const match = emoji.match(regex);
+
+    if (!match) return message.reply("Invalid emoji.");
+
+    const emojiID = match[1];
+    const animated = emoji.startsWith("<a:");
+    const url = `https://cdn.discordapp.com/emojis/${emojiID}.${animated ? "gif" : "png"}`;
+
+    try {
+      const newEmoji = await message.guild.emojis.create({
+        attachment: url,
+        name: name
+      });
+
+      message.reply(`✅ Stole emoji: <${animated ? "a" : ""}:${newEmoji.name}:${newEmoji.id}>`);
+    } catch (err) {
+      console.error(err);
+      message.reply("Failed to steal emoji.");
+    }
   }
 });
 
-// 🔑 LOGIN (Railway uses ENV)
+// 🔑 LOGIN
 client.login(process.env.TOKEN);
